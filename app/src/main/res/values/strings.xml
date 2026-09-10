@@ -1,0 +1,12 @@
+<resources>
+    <string name="app_name">Hotel ERP Pro</string>
+    <string name="app_title_ar">نظام الفندق المحترف</string>
+    <string name="nav_dashboard">لوحة التحكم</string>
+    <string name="nav_rooms">الغرف والإشغال</string>
+    <string name="nav_accounting">المالية والحسابات</string>
+    <string name="nav_settings">إعدادات النظام</string>
+    <string name="currency_default">YER</string>
+    <string name="currency_name_ar">ريال يمني</string>
+    <string name="status_system_ready">النظام جاهز للعمل</string>
+    <string name="database_connected">قاعدة البيانات المحلية متصلة بنجاح</string>
+</resources>
