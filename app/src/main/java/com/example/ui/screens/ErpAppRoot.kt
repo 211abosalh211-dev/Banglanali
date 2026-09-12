@@ -82,102 +82,147 @@ fun ErpAppRoot(
         if (state.session == null) {
             LoginScreen(viewModel = viewModel)
         } else {
-            Scaffold(
-                modifier = modifier.fillMaxSize(),
-                topBar = {
-                    TopAppBar(
-                        title = {
-                            Column {
-                                Text(
-                                    text = state.hotelName,
-                                    style = MaterialTheme.typography.titleMedium,
-                                    maxLines = 1,
-                                    overflow = TextOverflow.Ellipsis,
-                                    color = MaterialTheme.colorScheme.onPrimary,
-                                    fontWeight = FontWeight.Bold
-                                )
-                                Row(
-                                    verticalAlignment = Alignment.CenterVertically,
-                                    horizontalArrangement = Arrangement.spacedBy(6.dp)
-                                ) {
-                                    Box(
-                                        modifier = Modifier
-                                            .size(7.dp)
-                                            .clip(CircleShape)
-                                            .background(Color(0xFF10B981))
-                                    )
-                                    Text(
-                                        text = "المستخدم: ${state.session?.user?.fullName} • متصل محلياً",
-                                        style = MaterialTheme.typography.labelSmall,
-                                        color = MaterialTheme.colorScheme.onPrimary.copy(alpha = 0.85f)
-                                    )
-                                }
-                            }
-                        },
-                        actions = {
-                            IconButton(onClick = { viewModel.logout() }) {
-                                Icon(
-                                    imageVector = Icons.Default.ExitToApp,
-                                    contentDescription = "تسجيل الخروج",
-                                    tint = MaterialTheme.colorScheme.onPrimary
-                                )
-                            }
-                        },
-                        colors = TopAppBarDefaults.topAppBarColors(
-                            containerColor = NavyPrimary,
-                            titleContentColor = Color.White
-                        )
-                    )
-                },
-                bottomBar = {
-                    ScrollableTabRow(
-                        selectedTabIndex = NavDestination.entries.indexOf(state.selectedDestination).coerceAtLeast(0),
-                        edgePadding = 8.dp,
-                        containerColor = MaterialTheme.colorScheme.surface,
-                        contentColor = MaterialTheme.colorScheme.primary,
-                        modifier = Modifier.fillMaxWidth()
-                    ) {
-                        NavDestination.entries.forEach { dest ->
-                            val isSelected = state.selectedDestination == dest
-                            Tab(
-                                selected = isSelected,
-                                onClick = { viewModel.selectDestination(dest) },
-                                text = {
-                                    Text(
-                                        text = dest.titleAr,
-                                        fontSize = 11.sp,
-                                        fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal
-                                    )
-                                },
-                                icon = {
-                                    Icon(
-                                        imageVector = if (isSelected) dest.selectedIcon else dest.unselectedIcon,
-                                        contentDescription = dest.titleAr,
-                                        modifier = Modifier.size(20.dp)
-                                    )
-                                }
-                            )
-                        }
-                    }
-                },
-                snackbarHost = { SnackbarHost(snackbarHostState) }
-            ) { innerPadding ->
-                Box(
+            BoxWithConstraints(modifier = modifier.fillMaxSize()) {
+                val isWideScreen = maxWidth >= 600.dp
+
+                Scaffold(
                     modifier = Modifier
                         .fillMaxSize()
-                        .padding(innerPadding)
-                        .background(MaterialTheme.colorScheme.background)
-                ) {
-                    when (state.selectedDestination) {
-                        NavDestination.DASHBOARD -> DashboardView(state = state, viewModel = viewModel)
-                        NavDestination.HOTEL -> HotelUnitsView(state = state, viewModel = viewModel)
-                        NavDestination.CUSTOMERS -> CustomersReservationsView(state = state, viewModel = viewModel)
-                        NavDestination.ACCOUNTING -> AccountingCashboxView(state = state, viewModel = viewModel)
-                        NavDestination.CASHBOX -> AccountingCashboxView(state = state, viewModel = viewModel)
-                        NavDestination.INVENTORY -> OperationsPosView(state = state, viewModel = viewModel)
-                        NavDestination.POS -> OperationsPosView(state = state, viewModel = viewModel)
-                        NavDestination.REPORTS -> ReportsFinancialView(state = state, viewModel = viewModel)
-                        NavDestination.SECURITY -> SecurityRbacView(state = state, viewModel = viewModel)
+                        .imePadding(),
+                    topBar = {
+                        TopAppBar(
+                            title = {
+                                Column {
+                                    Text(
+                                        text = state.hotelName,
+                                        style = MaterialTheme.typography.titleMedium,
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis,
+                                        color = MaterialTheme.colorScheme.onPrimary,
+                                        fontWeight = FontWeight.Bold
+                                    )
+                                    Row(
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.spacedBy(6.dp)
+                                    ) {
+                                        Box(
+                                            modifier = Modifier
+                                                .size(7.dp)
+                                                .clip(CircleShape)
+                                                .background(Color(0xFF10B981))
+                                        )
+                                        Text(
+                                            text = "المستخدم: ${state.session?.user?.fullName} • متصل محلياً",
+                                            style = MaterialTheme.typography.labelSmall,
+                                            color = MaterialTheme.colorScheme.onPrimary.copy(alpha = 0.85f)
+                                        )
+                                    }
+                                }
+                            },
+                            actions = {
+                                IconButton(onClick = { viewModel.logout() }) {
+                                    Icon(
+                                        imageVector = Icons.Default.ExitToApp,
+                                        contentDescription = "تسجيل الخروج",
+                                        tint = MaterialTheme.colorScheme.onPrimary
+                                    )
+                                }
+                            },
+                            colors = TopAppBarDefaults.topAppBarColors(
+                                containerColor = NavyPrimary,
+                                titleContentColor = Color.White
+                            )
+                        )
+                    },
+                    bottomBar = {
+                        if (!isWideScreen) {
+                            ScrollableTabRow(
+                                selectedTabIndex = NavDestination.entries.indexOf(state.selectedDestination).coerceAtLeast(0),
+                                edgePadding = 8.dp,
+                                containerColor = MaterialTheme.colorScheme.surface,
+                                contentColor = MaterialTheme.colorScheme.primary,
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .navigationBarsPadding()
+                            ) {
+                                NavDestination.entries.forEach { dest ->
+                                    val isSelected = state.selectedDestination == dest
+                                    Tab(
+                                        selected = isSelected,
+                                        onClick = { viewModel.selectDestination(dest) },
+                                        text = {
+                                            Text(
+                                                text = dest.titleAr,
+                                                fontSize = 11.sp,
+                                                fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal
+                                            )
+                                        },
+                                        icon = {
+                                            Icon(
+                                                imageVector = if (isSelected) dest.selectedIcon else dest.unselectedIcon,
+                                                contentDescription = dest.titleAr,
+                                                modifier = Modifier.size(20.dp)
+                                            )
+                                        }
+                                    )
+                                }
+                            }
+                        }
+                    },
+                    snackbarHost = { SnackbarHost(snackbarHostState) }
+                ) { innerPadding ->
+                    Row(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .padding(innerPadding)
+                    ) {
+                        if (isWideScreen) {
+                            NavigationRail(
+                                modifier = Modifier.fillMaxHeight(),
+                                containerColor = MaterialTheme.colorScheme.surfaceVariant,
+                                contentColor = MaterialTheme.colorScheme.onSurfaceVariant
+                            ) {
+                                NavDestination.entries.forEach { dest ->
+                                    val isSelected = state.selectedDestination == dest
+                                    NavigationRailItem(
+                                        selected = isSelected,
+                                        onClick = { viewModel.selectDestination(dest) },
+                                        icon = {
+                                            Icon(
+                                                imageVector = if (isSelected) dest.selectedIcon else dest.unselectedIcon,
+                                                contentDescription = dest.titleAr
+                                            )
+                                        },
+                                        label = {
+                                            Text(
+                                                text = dest.titleAr,
+                                                fontSize = 11.sp,
+                                                fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal
+                                            )
+                                        }
+                                    )
+                                }
+                            }
+                        }
+
+                        Box(
+                            modifier = Modifier
+                                .weight(1f)
+                                .fillMaxHeight()
+                                .background(MaterialTheme.colorScheme.background)
+                        ) {
+                            when (state.selectedDestination) {
+                                NavDestination.DASHBOARD -> DashboardView(state = state, viewModel = viewModel)
+                                NavDestination.HOTEL -> HotelUnitsView(state = state, viewModel = viewModel)
+                                NavDestination.CUSTOMERS -> CustomersReservationsView(state = state, viewModel = viewModel)
+                                NavDestination.ACCOUNTING -> AccountingCashboxView(state = state, viewModel = viewModel)
+                                NavDestination.CASHBOX -> AccountingCashboxView(state = state, viewModel = viewModel)
+                                NavDestination.INVENTORY -> OperationsPosView(state = state, viewModel = viewModel)
+                                NavDestination.POS -> OperationsPosView(state = state, viewModel = viewModel)
+                                NavDestination.REPORTS -> ReportsFinancialView(state = state, viewModel = viewModel)
+                                NavDestination.SECURITY -> SecurityRbacView(state = state, viewModel = viewModel)
+                            }
+                        }
                     }
                 }
             }

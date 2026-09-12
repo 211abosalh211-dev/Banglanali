@@ -469,4 +469,24 @@ class ErpMasterViewModel(application: Application) : AndroidViewModel(applicatio
         )
         PdfReportGenerator.sharePdf(context, pdfFile, "طباعة ومشاركة سند القبض")
     }
+
+    fun printThermalReceipt(
+        context: Context,
+        receiptNumber: String,
+        customerName: String,
+        description: String,
+        amountMinor: Long
+    ) {
+        val operator = uiState.value.session?.user?.fullName ?: "المحاسب المعتمد"
+        val pdfFile = PdfReportGenerator.generateThermalReceiptPdf(
+            context = context,
+            receiptNumber = receiptNumber,
+            customerName = customerName,
+            description = description,
+            amountMinor = amountMinor,
+            hotelName = uiState.value.hotelName,
+            operatorName = operator
+        )
+        PdfReportGenerator.sharePdf(context, pdfFile, "طباعة إيصال طابعة حرارية 80mm")
+    }
 }

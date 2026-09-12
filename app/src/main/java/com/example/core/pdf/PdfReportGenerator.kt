@@ -284,6 +284,88 @@ object PdfReportGenerator {
         return file
     }
 
+    /**
+     * Generates a thermal receipt PDF formatted for 80mm standard POS printers.
+     * Width: 226pt (~80mm), height dynamically proportioned.
+     */
+    fun generateThermalReceiptPdf(
+        context: Context,
+        receiptNumber: String,
+        customerName: String,
+        description: String,
+        amountMinor: Long,
+        hotelName: String = "فندق البرج الذهبي الملكي",
+        operatorName: String = "المحاسب المعتمد"
+    ): File {
+        val document = PdfDocument()
+        val pageWidth = 226 // 80mm in points
+        val pageHeight = 420
+        val pageInfo = PdfDocument.PageInfo.Builder(pageWidth, pageHeight, 1).create()
+        val page = document.startPage(pageInfo)
+        val canvas = page.canvas
+
+        val boldCenter = Paint().apply {
+            color = Color.BLACK
+            textSize = 13f
+            isFakeBoldText = true
+            textAlign = Paint.Align.CENTER
+        }
+        val subCenter = Paint().apply {
+            color = Color.DKGRAY
+            textSize = 9f
+            textAlign = Paint.Align.CENTER
+        }
+        val bodyRight = Paint().apply {
+            color = Color.BLACK
+            textSize = 10f
+            textAlign = Paint.Align.RIGHT
+        }
+        val bodyLeft = Paint().apply {
+            color = Color.BLACK
+            textSize = 10f
+            isFakeBoldText = true
+            textAlign = Paint.Align.LEFT
+        }
+        val linePaint = Paint().apply {
+            color = Color.DKGRAY
+            strokeWidth = 1f
+            style = Paint.Style.STROKE
+        }
+
+        val dateStr = SimpleDateFormat("yyyy/MM/dd HH:mm", Locale.ENGLISH).format(Date())
+        val centerX = pageWidth / 2f
+        val rightX = pageWidth - 14f
+        val leftX = 14f
+
+        canvas.drawText(hotelName, centerX, 28f, boldCenter)
+        canvas.drawText("إيصال نقطة بيع واستلام فوري", centerX, 44f, subCenter)
+        canvas.drawText("رقم الإيصال: $receiptNumber", centerX, 58f, subCenter)
+        canvas.drawText("التاريخ: $dateStr", centerX, 72f, subCenter)
+
+        canvas.drawLine(leftX, 82f, rightX, 82f, linePaint)
+
+        canvas.drawText("العميل / النزيل: $customerName", rightX, 102f, bodyRight)
+        canvas.drawText("المشغّل: $operatorName", rightX, 120f, bodyRight)
+        canvas.drawText("البيان: $description", rightX, 138f, bodyRight)
+
+        canvas.drawLine(leftX, 150f, rightX, 150f, linePaint)
+
+        canvas.drawText("المبلغ الصافي المستلم:", rightX, 175f, bodyRight)
+        canvas.drawText(Money.fromMinor(amountMinor).formatted, leftX, 175f, bodyLeft)
+
+        canvas.drawLine(leftX, 190f, rightX, 190f, linePaint)
+
+        canvas.drawText("حالة الدفع: نقدي معتمد ومسجل بالصندوق", centerX, 215f, subCenter)
+        canvas.drawText("شكراً لزيارتكم واختياركم خدماتنا", centerX, 235f, boldCenter)
+        canvas.drawText("*** نظام HOTEL ERP PRO ***", centerX, 255f, subCenter)
+
+        document.finishPage(page)
+        val file = File(getReportsDir(context), "THERMAL_RECEIPT_${receiptNumber}_${System.currentTimeMillis() % 100000}.pdf")
+        FileOutputStream(file).use { document.writeTo(it) }
+        document.close()
+        return file
+    }
+
     fun sharePdf(context: Context, file: File, title: String = "مشاركة التقرير") {
         val uri = FileProvider.getUriForFile(
             context,

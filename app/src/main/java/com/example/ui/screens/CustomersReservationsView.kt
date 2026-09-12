@@ -1,10 +1,13 @@
 package com.example.ui.screens
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
@@ -15,6 +18,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import com.example.core.currency.Money
 import com.example.data.local.entity.customer.CustomerEntity
 import com.example.data.local.entity.hotel.UnitEntity
@@ -224,32 +228,67 @@ fun CustomersList(
     customers: List<CustomerEntity>,
     onDelete: (Long) -> Unit
 ) {
-    LazyColumn(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-        items(customers) { cust ->
-            Card(
-                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-                shape = RoundedCornerShape(12.dp),
-                modifier = Modifier.fillMaxWidth()
-            ) {
-                Row(
-                    modifier = Modifier.padding(16.dp),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Column {
-                        Text(
-                            text = cust.fullName,
-                            style = MaterialTheme.typography.titleMedium,
-                            fontWeight = FontWeight.Bold
-                        )
-                        Text(
-                            text = "هاتف: ${cust.phone} • الجنسية: ${cust.nationality}",
-                            style = MaterialTheme.typography.bodyMedium
-                        )
-                    }
+    var searchQuery by remember { mutableStateOf("") }
+    val filteredCustomers = remember(customers, searchQuery) {
+        if (searchQuery.isBlank()) customers
+        else customers.filter {
+            it.fullName.contains(searchQuery, ignoreCase = true) ||
+            it.phone.contains(searchQuery, ignoreCase = true) ||
+            (it.nationalIdNumber ?: "").contains(searchQuery, ignoreCase = true)
+        }
+    }
 
-                    IconButton(onClick = { onDelete(cust.id) }) {
-                        Icon(Icons.Default.Delete, contentDescription = "حذف العميل", tint = MaterialTheme.colorScheme.error)
+    Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+        OutlinedTextField(
+            value = searchQuery,
+            onValueChange = { searchQuery = it },
+            label = { Text("بحث عن عميل بالاسم، الهاتف أو الهوية") },
+            leadingIcon = { Icon(Icons.Default.Search, contentDescription = null) },
+            trailingIcon = {
+                if (searchQuery.isNotEmpty()) {
+                    IconButton(onClick = { searchQuery = "" }) {
+                        Icon(Icons.Default.Close, contentDescription = "مسح")
+                    }
+                }
+            },
+            singleLine = true,
+            modifier = Modifier.fillMaxWidth()
+        )
+
+        LazyColumn(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+            items(filteredCustomers) { cust ->
+                Card(
+                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+                    shape = RoundedCornerShape(12.dp),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Row(
+                        modifier = Modifier.padding(16.dp),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(
+                                text = cust.fullName,
+                                style = MaterialTheme.typography.titleMedium,
+                                fontWeight = FontWeight.Bold
+                            )
+                            Text(
+                                text = "هاتف: ${cust.phone} • الجنسية: ${cust.nationality}",
+                                style = MaterialTheme.typography.bodyMedium
+                            )
+                            if (cust.creditLimitMinor > 0) {
+                                Text(
+                                    text = "الحد الائتماني الآجل: ${Money.fromMinor(cust.creditLimitMinor).formatted}",
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = MaterialTheme.colorScheme.primary
+                                )
+                            }
+                        }
+
+                        IconButton(onClick = { onDelete(cust.id) }) {
+                            Icon(Icons.Default.Delete, contentDescription = "حذف العميل", tint = MaterialTheme.colorScheme.error)
+                        }
                     }
                 }
             }
@@ -271,7 +310,12 @@ fun AddCustomerDialog(
         onDismissRequest = onDismiss,
         title = { Text("إضافة عميل / نزيل جديد") },
         text = {
-            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .verticalScroll(rememberScrollState()),
+                verticalArrangement = Arrangement.spacedBy(10.dp)
+            ) {
                 OutlinedTextField(value = name, onValueChange = { name = it }, label = { Text("الاسم الرباعي") }, modifier = Modifier.fillMaxWidth())
                 OutlinedTextField(value = phone, onValueChange = { phone = it }, label = { Text("رقم الهاتف") }, modifier = Modifier.fillMaxWidth())
                 OutlinedTextField(value = nid, onValueChange = { nid = it }, label = { Text("رقم الهوية أو جواز السفر") }, modifier = Modifier.fillMaxWidth())
@@ -301,9 +345,48 @@ fun AddReservationDialog(
         onDismissRequest = onDismiss,
         title = { Text("إنشاء حجز فندقي مؤكد") },
         text = {
-            Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                Text("النزيل: ${customers.find { it.id == selectedCustId }?.fullName ?: "لا يوجد عملاء"}")
-                Text("الغرفة المختارة: رقم ${units.find { it.id == selectedUnitId }?.unitNumber ?: "لا توجد غرف متاحة"}")
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .verticalScroll(rememberScrollState()),
+                verticalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+                Text("اختر النزيل / العميل:", fontWeight = FontWeight.Bold)
+                customers.take(5).forEach { cust ->
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clickable { selectedCustId = cust.id }
+                            .padding(vertical = 4.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        RadioButton(selected = selectedCustId == cust.id, onClick = { selectedCustId = cust.id })
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Text("${cust.fullName} (${cust.phone})", fontSize = 13.sp)
+                    }
+                }
+
+                Divider()
+
+                Text("اختر وحدة الإقامة المتاحة:", fontWeight = FontWeight.Bold)
+                if (units.isEmpty()) {
+                    Text("لا توجد وحدات متاحة حالياً، يرجى إتاحة غرفة أولاً", color = MaterialTheme.colorScheme.error)
+                } else {
+                    units.take(6).forEach { unit ->
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clickable { selectedUnitId = unit.id }
+                                .padding(vertical = 4.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            RadioButton(selected = selectedUnitId == unit.id, onClick = { selectedUnitId = unit.id })
+                            Spacer(modifier = Modifier.width(6.dp))
+                            val price = unit.customNightlyPriceMinor ?: 1500000L
+                            Text("وحدة ${unit.unitNumber} - ${Money.fromMinor(price).formatted}", fontSize = 13.sp)
+                        }
+                    }
+                }
             }
         },
         confirmButton = {
@@ -315,7 +398,8 @@ fun AddReservationDialog(
                         val checkout = now + 86400000L
                         onConfirm(selectedCustId, selectedUnitId, now, checkout, unit?.customNightlyPriceMinor ?: 1500000L)
                     }
-                }
+                },
+                enabled = selectedCustId > 0 && selectedUnitId > 0
             ) { Text("تأكيد الحجز") }
         },
         dismissButton = { TextButton(onClick = onDismiss) { Text("إلغاء") } }
@@ -329,28 +413,62 @@ fun QuickCheckInDialog(
     onDismiss: () -> Unit,
     onConfirm: (Long, Long, Long) -> Unit
 ) {
-    val cust = customers.firstOrNull()
-    val unit = availableUnits.firstOrNull()
+    var selectedCustId by remember { mutableStateOf(customers.firstOrNull()?.id ?: 0L) }
+    var selectedUnitId by remember { mutableStateOf(availableUnits.firstOrNull()?.id ?: 0L) }
 
     AlertDialog(
         onDismissRequest = onDismiss,
         title = { Text("تسجيل وصول نزيل مباشر (Check-In)") },
         text = {
-            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                if (cust == null || unit == null) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .verticalScroll(rememberScrollState()),
+                verticalArrangement = Arrangement.spacedBy(10.dp)
+            ) {
+                if (customers.isEmpty() || availableUnits.isEmpty()) {
                     Text("يرجى التأكد من توفر عميل واحد على الأقل وغرفة واحدة متاحة.")
                 } else {
-                    Text("تسجيل وصول: ${cust.fullName}")
-                    Text("الغرفة: رقم ${unit.unitNumber}")
-                    val price = unit.customNightlyPriceMinor ?: 1500000L
-                    Text("السعر لليلة: ${Money.fromMinor(price).formatted}")
+                    Text("النزيل المسجل:", fontWeight = FontWeight.Bold)
+                    customers.take(4).forEach { cust ->
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clickable { selectedCustId = cust.id }
+                                .padding(vertical = 3.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            RadioButton(selected = selectedCustId == cust.id, onClick = { selectedCustId = cust.id })
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Text(cust.fullName, fontSize = 13.sp)
+                        }
+                    }
+
+                    Divider()
+
+                    Text("الوحدة الفندقية:", fontWeight = FontWeight.Bold)
+                    availableUnits.take(4).forEach { unit ->
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clickable { selectedUnitId = unit.id }
+                                .padding(vertical = 3.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            RadioButton(selected = selectedUnitId == unit.id, onClick = { selectedUnitId = unit.id })
+                            Spacer(modifier = Modifier.width(6.dp))
+                            val price = unit.customNightlyPriceMinor ?: 1500000L
+                            Text("رقم ${unit.unitNumber} (${Money.fromMinor(price).formatted}/ليلة)", fontSize = 13.sp)
+                        }
+                    }
                 }
             }
         },
         confirmButton = {
-            if (cust != null && unit != null) {
-                val price = unit.customNightlyPriceMinor ?: 1500000L
-                Button(onClick = { onConfirm(cust.id, unit.id, price) }) {
+            if (selectedCustId > 0 && selectedUnitId > 0) {
+                val unit = availableUnits.find { it.id == selectedUnitId }
+                val price = unit?.customNightlyPriceMinor ?: 1500000L
+                Button(onClick = { onConfirm(selectedCustId, selectedUnitId, price) }) {
                     Text("إتمام التسكين الآن")
                 }
             }

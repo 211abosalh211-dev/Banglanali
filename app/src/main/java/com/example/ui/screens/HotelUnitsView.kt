@@ -4,7 +4,9 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material3.*
@@ -15,6 +17,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import com.example.core.currency.Money
 import com.example.data.local.entity.hotel.UnitEntity
 import com.example.ui.viewmodel.ErpMasterViewModel
@@ -29,14 +32,24 @@ fun HotelUnitsView(
 ) {
     var showAddDialog by remember { mutableStateOf(false) }
     var selectedFilter by remember { mutableStateOf("ALL") }
+    var searchQuery by remember { mutableStateOf("") }
 
-    val filteredUnits = remember(state.units, selectedFilter) {
-        when (selectedFilter) {
+    val filteredUnits = remember(state.units, selectedFilter, searchQuery) {
+        val byStatus = when (selectedFilter) {
             "ALL" -> state.units
             "AVAILABLE" -> state.units.filter { it.status == "AVAILABLE" || it.status == "VACANT_CLEAN" }
             "OCCUPIED" -> state.units.filter { it.status == "OCCUPIED" }
             "CLEANING" -> state.units.filter { it.status == "CLEANING" || it.status == "VACANT_DIRTY" }
+            "MAINTENANCE" -> state.units.filter { it.status == "MAINTENANCE" || it.status == "UNDER_MAINTENANCE" }
             else -> state.units
+        }
+        if (searchQuery.isBlank()) {
+            byStatus
+        } else {
+            byStatus.filter {
+                it.unitNumber.contains(searchQuery, ignoreCase = true) ||
+                (it.notes ?: "").contains(searchQuery, ignoreCase = true)
+            }
         }
     }
 
@@ -46,7 +59,7 @@ fun HotelUnitsView(
                 onClick = { showAddDialog = true },
                 modifier = Modifier.testTag("fab_add_unit")
             ) {
-                Icon(Icons.Default.Add, contentDescription = "إضافة غرفة جديدة")
+                Icon(Icons.Default.Add, contentDescription = "إضافة وحدة جديدة")
             }
         },
         modifier = modifier.fillMaxSize()
@@ -58,6 +71,23 @@ fun HotelUnitsView(
                 .padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
+            // Search field
+            OutlinedTextField(
+                value = searchQuery,
+                onValueChange = { searchQuery = it },
+                label = { Text("بحث عن وحدة (رقم أو وصف)") },
+                leadingIcon = { Icon(Icons.Default.Search, contentDescription = null) },
+                trailingIcon = {
+                    if (searchQuery.isNotEmpty()) {
+                        IconButton(onClick = { searchQuery = "" }) {
+                            Icon(Icons.Default.Close, contentDescription = "مسح")
+                        }
+                    }
+                },
+                singleLine = true,
+                modifier = Modifier.fillMaxWidth()
+            )
+
             // Filter chips
             Row(
                 modifier = Modifier.fillMaxWidth(),
@@ -216,6 +246,7 @@ fun UnitCard(
     }
 }
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun AddUnitDialog(
     unitTypes: List<com.example.data.local.entity.hotel.UnitTypeEntity>,
@@ -226,35 +257,103 @@ fun AddUnitDialog(
     var floorText by remember { mutableStateOf("1") }
     var priceText by remember { mutableStateOf("15000") }
     var desc by remember { mutableStateOf("") }
-    val defaultTypeId = unitTypes.firstOrNull()?.id ?: 1L
+    
+    val accommodationOptions = remember(unitTypes) {
+        if (unitTypes.isNotEmpty()) {
+            unitTypes.map { it.id to it.nameAr }
+        } else {
+            listOf(
+                1L to "غرفة قياسية",
+                2L to "جناح ملكي",
+                3L to "شاليه عائلي",
+                4L to "خيمة فاخرة",
+                5L to "فيلا سياحية",
+                6L to "شقة مفروشة",
+                7L to "مجلس ضيافة",
+                8L to "استراحة خاصة",
+                9L to "قاعة مناسبات"
+            )
+        }
+    }
+    var selectedTypeId by remember { mutableStateOf(accommodationOptions.first().first) }
 
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text("إضافة غرفة أو وحدة فندقية جديدة") },
+        title = { Text("إضافة وحدة إقامة جديدة (فندق/شاليه/خيمة/فيلا)") },
         text = {
-            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .verticalScroll(rememberScrollState()),
+                verticalArrangement = Arrangement.spacedBy(10.dp)
+            ) {
                 OutlinedTextField(
                     value = unitNumber,
                     onValueChange = { unitNumber = it },
-                    label = { Text("رقم الغرفة (مثال: 103)") },
+                    label = { Text("رقم/اسم الوحدة (مثال: 103 أو شاليه 1)") },
                     modifier = Modifier.fillMaxWidth()
                 )
+
+                Text(
+                    text = "نوع وحدة الإقامة:",
+                    style = MaterialTheme.typography.labelMedium,
+                    fontWeight = FontWeight.Bold
+                )
+
+                // Accommodation Type Chips
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                ) {
+                    accommodationOptions.take(3).forEach { (id, name) ->
+                        FilterChip(
+                            selected = selectedTypeId == id,
+                            onClick = { selectedTypeId = id },
+                            label = { Text(name, fontSize = 11.sp) }
+                        )
+                    }
+                }
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                ) {
+                    accommodationOptions.drop(3).take(3).forEach { (id, name) ->
+                        FilterChip(
+                            selected = selectedTypeId == id,
+                            onClick = { selectedTypeId = id },
+                            label = { Text(name, fontSize = 11.sp) }
+                        )
+                    }
+                }
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                ) {
+                    accommodationOptions.drop(6).take(3).forEach { (id, name) ->
+                        FilterChip(
+                            selected = selectedTypeId == id,
+                            onClick = { selectedTypeId = id },
+                            label = { Text(name, fontSize = 11.sp) }
+                        )
+                    }
+                }
+
                 OutlinedTextField(
                     value = floorText,
                     onValueChange = { floorText = it },
-                    label = { Text("رقم الطابق") },
+                    label = { Text("رقم الطابق أو المنطقة") },
                     modifier = Modifier.fillMaxWidth()
                 )
                 OutlinedTextField(
                     value = priceText,
                     onValueChange = { priceText = it },
-                    label = { Text("سعر الليلة (ريال)") },
+                    label = { Text("سعر الإقامة لليلة (ريال يمني YER)") },
                     modifier = Modifier.fillMaxWidth()
                 )
                 OutlinedTextField(
                     value = desc,
                     onValueChange = { desc = it },
-                    label = { Text("الوصف أو المميزات") },
+                    label = { Text("الوصف أو المميزات (إطلالة، سعة، مرافق)") },
                     modifier = Modifier.fillMaxWidth()
                 )
             }
@@ -264,12 +363,13 @@ fun AddUnitDialog(
                 onClick = {
                     if (unitNumber.isNotBlank()) {
                         val floor = floorText.toIntOrNull() ?: 1
-                        val priceMinor = (priceText.toDoubleOrNull() ?: 15000.0 * 100).toLong() * 100
-                        onConfirm(unitNumber, floor, defaultTypeId, priceMinor, desc)
+                        val priceVal = priceText.toDoubleOrNull() ?: 15000.0
+                        val priceMinor = (priceVal * 100).toLong()
+                        onConfirm(unitNumber, floor, selectedTypeId, priceMinor, desc)
                     }
                 }
             ) {
-                Text("حفظ الغرفة")
+                Text("حفظ الوحدة")
             }
         },
         dismissButton = {
