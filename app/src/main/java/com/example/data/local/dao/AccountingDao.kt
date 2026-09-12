@@ -87,4 +87,50 @@ interface AccountingDao {
 
     @Query("SELECT * FROM journal_entry_lines WHERE entryId = :entryId")
     suspend fun getLinesForEntry(entryId: Long): List<JournalEntryLineEntity>
+
+    // Advanced Account Statement Queries
+    @Query("""
+        SELECT 
+            je.id AS entryId,
+            je.entryNumber AS entryNumber,
+            je.date AS date,
+            je.referenceType AS referenceType,
+            je.referenceId AS referenceId,
+            jel.description AS description,
+            jel.debit AS debit,
+            jel.credit AS credit
+        FROM journal_entry_lines jel
+        INNER JOIN journal_entries je ON jel.entryId = je.id
+        WHERE jel.accountId = :accountId
+        ORDER BY je.date ASC, jel.id ASC
+    """)
+    fun getStatementLinesForAccount(accountId: Long): Flow<List<AccountStatementLineTuple>>
+
+    @Query("""
+        SELECT 
+            je.id AS entryId,
+            je.entryNumber AS entryNumber,
+            je.date AS date,
+            je.referenceType AS referenceType,
+            je.referenceId AS referenceId,
+            jel.description AS description,
+            jel.debit AS debit,
+            jel.credit AS credit
+        FROM journal_entry_lines jel
+        INNER JOIN journal_entries je ON jel.entryId = je.id
+        ORDER BY je.date ASC, jel.id ASC
+    """)
+    fun getAllStatementLines(): Flow<List<AccountStatementLineTuple>>
 }
+
+data class AccountStatementLineTuple(
+    val entryId: Long,
+    val entryNumber: String,
+    val date: Long,
+    val referenceType: String?,
+    val referenceId: String?,
+    val description: String,
+    val debit: Long,
+    val credit: Long
+)
+

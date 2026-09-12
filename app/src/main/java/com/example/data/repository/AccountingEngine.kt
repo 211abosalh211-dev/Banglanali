@@ -31,6 +31,8 @@ class AccountingEngine(
     )
     fun getAllAccounts(): Flow<List<AccountEntity>> = accountingDao.getAllActiveAccounts()
     fun getAllJournalEntries(): Flow<List<JournalEntryEntity>> = accountingDao.getAllJournalEntries()
+    fun getStatementLinesForAccount(accountId: Long): Flow<List<AccountStatementLineTuple>> = accountingDao.getStatementLinesForAccount(accountId)
+    fun getAllStatementLines(): Flow<List<AccountStatementLineTuple>> = accountingDao.getAllStatementLines()
 
     /**
      * Central Posting Engine: Strict Balanced Double-Entry Rule.

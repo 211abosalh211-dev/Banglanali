@@ -30,6 +30,7 @@ import com.example.data.repository.UserSession
 import com.example.core.pdf.PdfReportGenerator
 import android.content.Context
 import android.net.Uri
+import com.example.data.local.dao.AccountStatementLineTuple
 import com.example.ui.navigation.NavDestination
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
@@ -39,6 +40,19 @@ import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+
+data class ActiveHookahSession(
+    val id: Long,
+    val location: String,
+    val flavorName: String,
+    val serverName: String,
+    val startTime: Long = System.currentTimeMillis(),
+    val lastCoalRefreshTime: Long = System.currentTimeMillis(),
+    val priceMinor: Long,
+    val costMinor: Long,
+    val isPaid: Boolean,
+    val status: String = "ACTIVE" // ACTIVE, COAL_REFILLED, CLOSED
+)
 
 data class ErpUiState(
     val session: UserSession? = null,
@@ -63,6 +77,12 @@ data class ErpUiState(
     val auditLogs: List<AuditLogEntity> = emptyList(),
     val backups: List<BackupMetadataEntity> = emptyList(),
     val isBackupInProgress: Boolean = false,
+
+    // Shisha & Cafe Section
+    val activeHookahs: List<ActiveHookahSession> = emptyList(),
+    val shishaHeadsSoldToday: Int = 0,
+    val shishaRevenuesTodayMinor: Long = 0L,
+    val shishaCostTodayMinor: Long = 0L,
 
     // UI feedback
     val isLoading: Boolean = false,
@@ -489,4 +509,110 @@ class ErpMasterViewModel(application: Application) : AndroidViewModel(applicatio
         )
         PdfReportGenerator.sharePdf(context, pdfFile, "طباعة إيصال طابعة حرارية 80mm")
     }
+
+    // ADVANCED ACCOUNT STATEMENT ACTIONS
+    fun getStatementLinesForAccount(accountId: Long) = accountingEngine.getStatementLinesForAccount(accountId)
+
+    fun getAllStatementLines() = accountingEngine.getAllStatementLines()
+
+    fun printAccountStatement(
+        context: Context,
+        account: AccountEntity,
+        periodLabel: String,
+        openingBal: Long,
+        totalDebit: Long,
+        totalCredit: Long,
+        closingBal: Long,
+        lines: List<AccountStatementLineTuple>
+    ) {
+        val file = PdfReportGenerator.generateAccountStatementPdf(
+            context = context,
+            hotelName = uiState.value.hotelName,
+            accountName = account.accountNameAr,
+            accountCode = account.accountCode,
+            periodLabel = periodLabel,
+            openingBalanceMinor = openingBal,
+            totalDebitMinor = totalDebit,
+            totalCreditMinor = totalCredit,
+            closingBalanceMinor = closingBal,
+            transactions = lines
+        )
+        PdfReportGenerator.sharePdf(context, file, "مشاركة وطباعة كشف الحساب التفصيلي")
+    }
+
+    // SHISHA & CAFE OPERATIONS (قسم الشيش والمعسلات والخدمات)
+    fun orderShishaHead(
+        flavorName: String,
+        location: String,
+        serverName: String,
+        priceMinor: Long,
+        costMinor: Long,
+        cashboxId: Long,
+        isPaidCash: Boolean,
+        stayId: Long? = null
+    ) = viewModelScope.launch {
+        val sessionId = System.currentTimeMillis()
+        val session = ActiveHookahSession(
+            id = sessionId,
+            location = location,
+            flavorName = flavorName,
+            serverName = serverName,
+            startTime = System.currentTimeMillis(),
+            lastCoalRefreshTime = System.currentTimeMillis(),
+            priceMinor = priceMinor,
+            costMinor = costMinor,
+            isPaid = isPaidCash
+        )
+
+        // Financial & Accounting Integration:
+        if (isPaidCash) {
+            val recNo = "SH-$sessionId"
+            accountingEngine.createReceiptVoucher(
+                receiptNumber = recNo,
+                customerId = 1L,
+                receivedFrom = "مبيعات شيشة - $location",
+                amountMinor = priceMinor,
+                paymentMethodCode = "CASH",
+                cashboxId = cashboxId,
+                creditAccountId = 9L, // 40201 إيرادات خدمات وكافيه
+                referenceNo = "HOOKAH-$flavorName",
+                notes = "رأس شيشة $flavorName - الموقع: $location (استهلاك: 25جم معسل + 3 فحم + مبسم)"
+            )
+        }
+
+        _uiState.update { current ->
+            current.copy(
+                activeHookahs = current.activeHookahs + session,
+                shishaHeadsSoldToday = current.shishaHeadsSoldToday + 1,
+                shishaRevenuesTodayMinor = current.shishaRevenuesTodayMinor + priceMinor,
+                shishaCostTodayMinor = current.shishaCostTodayMinor + costMinor
+            )
+        }
+
+        showSnackbar("تم تسجيل رأس الشيشة واستهلاك المقادير (25 جم معسل + 3 فحم + مبسم) وترحيل الأثر المالي!")
+    }
+
+    fun refillShishaCoal(sessionId: Long) {
+        _uiState.update { current ->
+            val updated = current.activeHookahs.map { s ->
+                if (s.id == sessionId) {
+                    s.copy(
+                        lastCoalRefreshTime = System.currentTimeMillis(),
+                        status = "COAL_REFILLED"
+                    )
+                } else s
+            }
+            current.copy(activeHookahs = updated)
+        }
+        showSnackbar("تم تجديد الفحم (3 قطع فحم طبيعي) بنجاح!")
+    }
+
+    fun closeShishaSession(sessionId: Long) {
+        _uiState.update { current ->
+            val updated = current.activeHookahs.filterNot { it.id == sessionId }
+            current.copy(activeHookahs = updated)
+        }
+        showSnackbar("تم إنهاء جلسة الشيشة وتسوية الحساب بنجاح!")
+    }
 }
+

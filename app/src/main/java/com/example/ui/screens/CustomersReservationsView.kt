@@ -68,9 +68,13 @@ fun CustomersReservationsView(
 
             when (selectedTab) {
                 0 -> ReservationsList(reservations = state.reservations, customers = state.customers, units = state.units)
-                1 -> ActiveStaysList(units = state.units, cashboxes = state.cashboxes, onCheckOut = { stayId, boxId ->
-                    viewModel.checkOutGuest(stayId, boxId, "CASH")
-                })
+                1 -> ActiveStaysList(
+                    units = state.units,
+                    cashboxes = state.cashboxes,
+                    onCheckOut = { stayId, boxId, method, totalPaid ->
+                        viewModel.checkOutGuest(stayId, boxId, method)
+                    }
+                )
                 2 -> CustomersList(customers = state.customers, onDelete = { viewModel.deleteCustomer(it) })
             }
         }
@@ -171,10 +175,10 @@ fun ReservationsList(
 fun ActiveStaysList(
     units: List<UnitEntity>,
     cashboxes: List<com.example.data.local.entity.cashbox.CashboxEntity>,
-    onCheckOut: (Long, Long) -> Unit
+    onCheckOut: (Long, Long, String, Long) -> Unit
 ) {
     val occupiedUnits = units.filter { it.status == "OCCUPIED" }
-    val defaultCashboxId = cashboxes.firstOrNull()?.id ?: 1L
+    var unitToCheckout by remember { mutableStateOf<UnitEntity?>(null) }
 
     if (occupiedUnits.isEmpty()) {
         Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
@@ -208,20 +212,177 @@ fun ActiveStaysList(
                         }
 
                         Button(
-                            onClick = {
-                                // Trigger check-out with simulated stay ID matching unit
-                                onCheckOut(unit.id, defaultCashboxId)
-                            },
+                            onClick = { unitToCheckout = unit },
                             colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error)
                         ) {
-                            Text("تسجيل مغادرة (Check-out)")
+                            Text("تسجيل مغادرة وتسوية (Check-out)")
                         }
                     }
                 }
             }
         }
     }
+
+    unitToCheckout?.let { unit ->
+        CheckOutSettlementDialog(
+            unit = unit,
+            cashboxes = cashboxes,
+            onDismiss = { unitToCheckout = null },
+            onConfirm = { stayId, boxId, method, totalPaid ->
+                onCheckOut(stayId, boxId, method, totalPaid)
+                unitToCheckout = null
+            }
+        )
+    }
 }
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun CheckOutSettlementDialog(
+    unit: UnitEntity,
+    cashboxes: List<com.example.data.local.entity.cashbox.CashboxEntity>,
+    onDismiss: () -> Unit,
+    onConfirm: (Long, Long, String, Long) -> Unit
+) {
+    var nightsCountText by remember { mutableStateOf("1") }
+    val nightlyRate = unit.customNightlyPriceMinor ?: 1500000L
+    var servicesText by remember { mutableStateOf("0") }
+    var discountText by remember { mutableStateOf("0") }
+    var advanceDepositText by remember { mutableStateOf("0") }
+    var paymentMethod by remember { mutableStateOf("CASH") } // CASH, CARD, CREDIT
+    var selectedCashboxId by remember { mutableStateOf(cashboxes.firstOrNull()?.id ?: 1L) }
+
+    val nights = nightsCountText.toIntOrNull()?.coerceAtLeast(1) ?: 1
+    val roomChargeMinor = nightlyRate * nights
+    val servicesMinor = (servicesText.toDoubleOrNull() ?: 0.0).toLong() * 100
+    val discountMinor = (discountText.toDoubleOrNull() ?: 0.0).toLong() * 100
+    val advanceDepositMinor = (advanceDepositText.toDoubleOrNull() ?: 0.0).toLong() * 100
+
+    val grossTotal = roomChargeMinor + servicesMinor
+    val netTotalDue = (grossTotal - discountMinor - advanceDepositMinor).coerceAtLeast(0L)
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = {
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                Icon(Icons.Default.Receipt, contentDescription = null, tint = MaterialTheme.colorScheme.error)
+                Text("تسوية ومغادرة النزيل (Check-Out)", fontWeight = FontWeight.Bold)
+            }
+        },
+        text = {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .verticalScroll(rememberScrollState()),
+                verticalArrangement = Arrangement.spacedBy(10.dp)
+            ) {
+                Surface(
+                    color = MaterialTheme.colorScheme.primaryContainer,
+                    shape = RoundedCornerShape(8.dp),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Column(modifier = Modifier.padding(12.dp)) {
+                        Text("الغرفة: ${unit.unitNumber} • السعر التعاقدي لليلة: ${Money.fromMinor(nightlyRate).formatted}", fontWeight = FontWeight.Bold)
+                    }
+                }
+
+                OutlinedTextField(
+                    value = nightsCountText,
+                    onValueChange = { nightsCountText = it },
+                    label = { Text("عدد ليالي الإقامة الفعلية") },
+                    modifier = Modifier.fillMaxWidth()
+                )
+
+                OutlinedTextField(
+                    value = servicesText,
+                    onValueChange = { servicesText = it },
+                    label = { Text("رسوم خدمات إضافية وكافيه/شيشة (ريال)") },
+                    modifier = Modifier.fillMaxWidth()
+                )
+
+                OutlinedTextField(
+                    value = discountText,
+                    onValueChange = { discountText = it },
+                    label = { Text("خصم تسوية معتمد (ريال)") },
+                    modifier = Modifier.fillMaxWidth()
+                )
+
+                OutlinedTextField(
+                    value = advanceDepositText,
+                    onValueChange = { advanceDepositText = it },
+                    label = { Text("الدفعات والتأمينات المقدمة المخصومة (ريال)") },
+                    modifier = Modifier.fillMaxWidth()
+                )
+
+                Divider()
+
+                // Balance summary box
+                Surface(
+                    color = Color(0xFFF1F8E9),
+                    shape = RoundedCornerShape(8.dp),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                            Text("إجمالي الإقامة والخدمات:")
+                            Text(Money.fromMinor(grossTotal).formatted, fontWeight = FontWeight.Bold)
+                        }
+                        Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                            Text("الصافي المستحق للسداد:", fontWeight = FontWeight.Bold, color = Color(0xFF2E7D32))
+                            Text(Money.fromMinor(netTotalDue).formatted, fontWeight = FontWeight.Bold, color = Color(0xFF2E7D32), fontSize = 16.sp)
+                        }
+                    }
+                }
+
+                Text("طريقة التحصيل / التسوية:", fontWeight = FontWeight.Bold, style = MaterialTheme.typography.labelMedium)
+                Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    FilterChip(
+                        selected = paymentMethod == "CASH",
+                        onClick = { paymentMethod = "CASH" },
+                        label = { Text("نقداً بالصندوق") }
+                    )
+                    FilterChip(
+                        selected = paymentMethod == "CARD",
+                        onClick = { paymentMethod = "CARD" },
+                        label = { Text("شبكة / بنكي") }
+                    )
+                    FilterChip(
+                        selected = paymentMethod == "CREDIT",
+                        onClick = { paymentMethod = "CREDIT" },
+                        label = { Text("حساب آجل للنزيل") }
+                    )
+                }
+
+                if (paymentMethod != "CREDIT" && cashboxes.isNotEmpty()) {
+                    Text("الصندوق المستلم:", style = MaterialTheme.typography.labelMedium)
+                    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                        cashboxes.take(3).forEach { box ->
+                            FilterChip(
+                                selected = selectedCashboxId == box.id,
+                                onClick = { selectedCashboxId = box.id },
+                                label = { Text(box.nameAr) }
+                            )
+                        }
+                    }
+                }
+            }
+        },
+        confirmButton = {
+            Button(
+                onClick = {
+                    onConfirm(unit.id, selectedCashboxId, paymentMethod, netTotalDue)
+                },
+                colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error)
+            ) {
+                Text("تأكيد المخالصة والمغادرة")
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) { Text("إلغاء") }
+        }
+    )
+}
+
 
 @Composable
 fun CustomersList(

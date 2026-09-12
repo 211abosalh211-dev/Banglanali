@@ -18,6 +18,10 @@ class AccountingRepository(private val database: HotelDatabase) {
 
     fun getAllJournalEntries(): Flow<List<JournalEntryEntity>> = accountingDao.getAllJournalEntries()
 
+    fun getStatementLinesForAccount(accountId: Long) = accountingDao.getStatementLinesForAccount(accountId)
+
+    fun getAllStatementLines() = accountingDao.getAllStatementLines()
+
     suspend fun getJournalEntryWithLines(id: Long): JournalEntryWithLines? =
         accountingDao.getJournalEntryWithLines(id)
 

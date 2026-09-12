@@ -366,6 +366,125 @@ object PdfReportGenerator {
         return file
     }
 
+    fun generateAccountStatementPdf(
+        context: Context,
+        hotelName: String,
+        accountName: String,
+        accountCode: String,
+        periodLabel: String,
+        openingBalanceMinor: Long,
+        totalDebitMinor: Long,
+        totalCreditMinor: Long,
+        closingBalanceMinor: Long,
+        transactions: List<com.example.data.local.dao.AccountStatementLineTuple>
+    ): File {
+        val document = PdfDocument()
+        val pageInfo = PdfDocument.PageInfo.Builder(595, 842, 1).create()
+        val page = document.startPage(pageInfo)
+        val canvas = page.canvas
+
+        val titlePaint = Paint().apply {
+            color = Color.rgb(30, 41, 59)
+            textSize = 18f
+            isFakeBoldText = true
+            textAlign = Paint.Align.CENTER
+        }
+        val subTitlePaint = Paint().apply {
+            color = Color.rgb(100, 116, 139)
+            textSize = 11f
+            textAlign = Paint.Align.CENTER
+        }
+        val headerPaint = Paint().apply {
+            color = Color.rgb(51, 65, 85)
+            textSize = 11f
+            isFakeBoldText = true
+            textAlign = Paint.Align.RIGHT
+        }
+        val bodyRight = Paint().apply {
+            color = Color.rgb(30, 41, 59)
+            textSize = 9.5f
+            textAlign = Paint.Align.RIGHT
+        }
+        val bodyLeft = Paint().apply {
+            color = Color.rgb(30, 41, 59)
+            textSize = 9.5f
+            textAlign = Paint.Align.LEFT
+        }
+        val borderPaint = Paint().apply {
+            color = Color.rgb(203, 213, 225)
+            strokeWidth = 1f
+            style = Paint.Style.STROKE
+        }
+        val fillHeaderPaint = Paint().apply {
+            color = Color.rgb(241, 245, 249)
+            style = Paint.Style.FILL
+        }
+
+        val pageWidth = 595f
+        val dateStr = SimpleDateFormat("yyyy/MM/dd HH:mm", Locale.ENGLISH).format(Date())
+
+        // Header
+        canvas.drawText(hotelName, pageWidth / 2, 45f, titlePaint)
+        canvas.drawText("كشف حساب تفصيلي رسمي - (Statement of Account)", pageWidth / 2, 65f, subTitlePaint)
+        canvas.drawText("الفترة: $periodLabel • تاريخ الاستخراج: $dateStr", pageWidth / 2, 80f, subTitlePaint)
+
+        canvas.drawLine(30f, 92f, pageWidth - 30f, 92f, borderPaint)
+
+        // Account Summary Banner
+        canvas.drawRect(30f, 102f, pageWidth - 30f, 160f, fillHeaderPaint)
+        canvas.drawRect(30f, 102f, pageWidth - 30f, 160f, borderPaint)
+
+        canvas.drawText("الحساب: $accountCode - $accountName", pageWidth - 45f, 122f, headerPaint)
+        canvas.drawText("الرصيد الافتتاحي: ${Money.fromMinor(openingBalanceMinor).formatted}", pageWidth - 45f, 145f, bodyRight)
+        canvas.drawText("إجمالي المدين: ${Money.fromMinor(totalDebitMinor).formatted}", 380f, 145f, bodyRight)
+        canvas.drawText("إجمالي الدائن: ${Money.fromMinor(totalCreditMinor).formatted}", 250f, 145f, bodyRight)
+        canvas.drawText("الرصيد النهائي: ${Money.fromMinor(closingBalanceMinor).formatted}", 45f, 145f, bodyLeft)
+
+        // Table Header
+        val tableTop = 175f
+        canvas.drawRect(30f, tableTop, pageWidth - 30f, tableTop + 24f, fillHeaderPaint)
+        canvas.drawRect(30f, tableTop, pageWidth - 30f, tableTop + 24f, borderPaint)
+
+        canvas.drawText("التاريخ", pageWidth - 40f, tableTop + 16f, headerPaint)
+        canvas.drawText("رقم القيد/المستند", pageWidth - 110f, tableTop + 16f, headerPaint)
+        canvas.drawText("البيان التفصيلي للحركة", pageWidth - 220f, tableTop + 16f, headerPaint)
+        canvas.drawText("مدين", 170f, tableTop + 16f, headerPaint)
+        canvas.drawText("دائن", 110f, tableTop + 16f, headerPaint)
+        canvas.drawText("الرصيد التراكمي", 45f, tableTop + 16f, bodyLeft)
+
+        // Table Rows
+        var currentY = tableTop + 42f
+        var runningBal = openingBalanceMinor
+        val sdf = SimpleDateFormat("MM/dd", Locale.ENGLISH)
+
+        val displayList = transactions.take(20) // Fit nicely on 1st page
+        for (tx in displayList) {
+            runningBal += (tx.debit - tx.credit)
+            val dStr = sdf.format(Date(tx.date))
+
+            canvas.drawText(dStr, pageWidth - 40f, currentY, bodyRight)
+            canvas.drawText(tx.entryNumber.take(12), pageWidth - 110f, currentY, bodyRight)
+            canvas.drawText(tx.description.take(28), pageWidth - 220f, currentY, bodyRight)
+            canvas.drawText(if (tx.debit > 0) Money.fromMinor(tx.debit).formatted else "-", 170f, currentY, bodyRight)
+            canvas.drawText(if (tx.credit > 0) Money.fromMinor(tx.credit).formatted else "-", 110f, currentY, bodyRight)
+            canvas.drawText(Money.fromMinor(runningBal).formatted, 45f, currentY, bodyLeft)
+
+            canvas.drawLine(30f, currentY + 6f, pageWidth - 30f, currentY + 6f, borderPaint)
+            currentY += 22f
+            if (currentY > 750f) break
+        }
+
+        // Footer
+        canvas.drawText("إجمالي الحركات المعروضة: ${displayList.size} من أصل ${transactions.size}", pageWidth - 45f, 790f, subTitlePaint)
+        canvas.drawText("تم استخراج هذا التقرير آلياً عبر نظام HOTEL ERP PRO المحاسبي المعتمد", pageWidth / 2, 815f, subTitlePaint)
+
+        document.finishPage(page)
+        val file = File(getReportsDir(context), "ACCOUNT_STATEMENT_${accountCode}_${System.currentTimeMillis() % 100000}.pdf")
+        FileOutputStream(file).use { document.writeTo(it) }
+        document.close()
+        return file
+    }
+
     fun sharePdf(context: Context, file: File, title: String = "مشاركة التقرير") {
         val uri = FileProvider.getUriForFile(
             context,

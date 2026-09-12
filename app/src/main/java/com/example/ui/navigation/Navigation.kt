@@ -7,6 +7,7 @@ import androidx.compose.material.icons.filled.BarChart
 import androidx.compose.material.icons.filled.Dashboard
 import androidx.compose.material.icons.filled.Hotel
 import androidx.compose.material.icons.filled.Inventory
+import androidx.compose.material.icons.filled.LocalCafe
 import androidx.compose.material.icons.filled.People
 import androidx.compose.material.icons.filled.PointOfSale
 import androidx.compose.material.icons.filled.Security
@@ -16,6 +17,7 @@ import androidx.compose.material.icons.outlined.BarChart
 import androidx.compose.material.icons.outlined.Dashboard
 import androidx.compose.material.icons.outlined.Hotel
 import androidx.compose.material.icons.outlined.Inventory
+import androidx.compose.material.icons.outlined.LocalCafe
 import androidx.compose.material.icons.outlined.People
 import androidx.compose.material.icons.outlined.PointOfSale
 import androidx.compose.material.icons.outlined.Security
@@ -84,6 +86,14 @@ enum class NavDestination(
         selectedIcon = Icons.Filled.PointOfSale,
         unselectedIcon = Icons.Outlined.PointOfSale,
         testTag = "nav_item_pos"
+    ),
+    SHISHA(
+        route = "shisha",
+        titleAr = "الشيش والمعسلات",
+        titleEn = "Shisha & Cafe",
+        selectedIcon = Icons.Filled.LocalCafe,
+        unselectedIcon = Icons.Outlined.LocalCafe,
+        testTag = "nav_item_shisha"
     ),
     REPORTS(
         route = "reports",

@@ -13,12 +13,18 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import com.example.core.currency.Money
+import com.example.data.local.dao.AccountStatementLineTuple
 import com.example.data.local.entity.accounting.AccountEntity
 import com.example.data.local.entity.cashbox.CashboxEntity
 import com.example.ui.viewmodel.ErpMasterViewModel
 import com.example.ui.viewmodel.ErpUiState
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -47,6 +53,7 @@ fun AccountingCashboxView(
                 Tab(selected = selectedTab == 0, onClick = { selectedTab = 0 }, text = { Text("الصناديق والورديات") })
                 Tab(selected = selectedTab == 1, onClick = { selectedTab = 1 }, text = { Text("سندات القبض والصرف") })
                 Tab(selected = selectedTab == 2, onClick = { selectedTab = 2 }, text = { Text("دليل الحسابات المالي") })
+                Tab(selected = selectedTab == 3, onClick = { selectedTab = 3 }, text = { Text("كشف حساب تفصيلي") })
             }
 
             when (selectedTab) {
@@ -60,6 +67,7 @@ fun AccountingCashboxView(
                     onNewPayment = { showPaymentDialog = true }
                 )
                 2 -> ChartOfAccountsSection(accounts = state.accounts)
+                3 -> AccountStatementSection(state = state, viewModel = viewModel)
             }
         }
     }
@@ -401,3 +409,304 @@ fun OpenShiftDialog(
         dismissButton = { TextButton(onClick = onDismiss) { Text("إلغاء") } }
     )
 }
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun AccountStatementSection(
+    state: ErpUiState,
+    viewModel: ErpMasterViewModel
+) {
+    val context = LocalContext.current
+    var selectedAccount by remember(state.accounts) {
+        mutableStateOf(state.accounts.firstOrNull { it.accountCode == "10101" } ?: state.accounts.firstOrNull())
+    }
+    var selectedFilterIndex by remember { mutableIntStateOf(0) }
+    val filterLabels = listOf("كافة الحركات", "اليوم فقط", "آخر 7 أيام", "هذا الشهر")
+
+    val allLines by viewModel.getAllStatementLines().collectAsState(initial = emptyList())
+
+    val statementLines = remember(selectedAccount, allLines, selectedFilterIndex) {
+        val accountLines = if (selectedAccount != null) {
+            allLines.filter { true } // filter handled below per account
+        } else allLines
+
+        val accId = selectedAccount?.id ?: 1L
+        // Filter lines belonging to this account (by joining entries/lines, getStatementLinesForAccount)
+        allLines.filter { it.entryId > 0 } // base
+    }
+
+    // Direct account statement lines flow
+    val accountDirectLines by (if (selectedAccount != null) {
+        viewModel.getStatementLinesForAccount(selectedAccount!!.id)
+    } else {
+        viewModel.getAllStatementLines()
+    }).collectAsState(initial = emptyList())
+
+    // Date filtering
+    val now = System.currentTimeMillis()
+    val filteredTransactions = remember(accountDirectLines, selectedFilterIndex) {
+        when (selectedFilterIndex) {
+            1 -> { // Today
+                val startOfDay = now - (now % (24 * 3600 * 1000))
+                accountDirectLines.filter { it.date >= startOfDay }
+            }
+            2 -> { // Last 7 days
+                val sevenDaysAgo = now - (7L * 24 * 3600 * 1000)
+                accountDirectLines.filter { it.date >= sevenDaysAgo }
+            }
+            3 -> { // This month
+                val thirtyDaysAgo = now - (30L * 24 * 3600 * 1000)
+                accountDirectLines.filter { it.date >= thirtyDaysAgo }
+            }
+            else -> accountDirectLines
+        }
+    }
+
+    val openingBal = 0L
+    val totalDebit = filteredTransactions.sumOf { it.debit }
+    val totalCredit = filteredTransactions.sumOf { it.credit }
+    val closingBal = openingBal + (totalDebit - totalCredit)
+
+    Column(
+        modifier = Modifier.fillMaxSize(),
+        verticalArrangement = Arrangement.spacedBy(12.dp)
+    ) {
+        // Account Selector & Print Statement Header
+        Card(
+            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+            shape = RoundedCornerShape(12.dp),
+            elevation = CardDefaults.cardElevation(defaultElevation = 2.dp),
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            Column(modifier = Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Column {
+                        Text(
+                            text = "كشف حساب تفصيلي رسمي (Statement)",
+                            style = MaterialTheme.typography.titleMedium,
+                            fontWeight = FontWeight.Bold
+                        )
+                        Text(
+                            text = "استعراض حركات اليومية، القيود، الأرصدة التراكمية، والتصدير لـ PDF",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.outline
+                        )
+                    }
+
+                    Button(
+                        onClick = {
+                            selectedAccount?.let { acc ->
+                                viewModel.printAccountStatement(
+                                    context = context,
+                                    account = acc,
+                                    periodLabel = filterLabels[selectedFilterIndex],
+                                    openingBal = openingBal,
+                                    totalDebit = totalDebit,
+                                    totalCredit = totalCredit,
+                                    closingBal = closingBal,
+                                    lines = filteredTransactions
+                                )
+                            }
+                        },
+                        colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary)
+                    ) {
+                        Icon(Icons.Default.Print, contentDescription = null)
+                        Spacer(Modifier.width(4.dp))
+                        Text("طباعة كشف A4")
+                    }
+                }
+
+                // Account Selection Filter Row
+                Text("اختر الحساب المحاسبي:", style = MaterialTheme.typography.labelMedium, fontWeight = FontWeight.Bold)
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                ) {
+                    val keyAccounts = state.accounts.take(5)
+                    keyAccounts.forEach { acc ->
+                        val isSelected = selectedAccount?.id == acc.id
+                        FilterChip(
+                            selected = isSelected,
+                            onClick = { selectedAccount = acc },
+                            label = { Text("${acc.accountCode} - ${acc.accountNameAr.take(12)}") }
+                        )
+                    }
+                }
+
+                // Period Filter Chips
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                ) {
+                    filterLabels.forEachIndexed { idx, label ->
+                        FilterChip(
+                            selected = selectedFilterIndex == idx,
+                            onClick = { selectedFilterIndex = idx },
+                            label = { Text(label) }
+                        )
+                    }
+                }
+            }
+        }
+
+        // Financial KPI Summary Cards
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            StatementKpiBox(
+                title = "الرصيد الافتتاحي",
+                amountMinor = openingBal,
+                color = Color(0xFF455A64),
+                modifier = Modifier.weight(1f)
+            )
+            StatementKpiBox(
+                title = "إجمالي المدين (+)",
+                amountMinor = totalDebit,
+                color = Color(0xFF2E7D32),
+                modifier = Modifier.weight(1f)
+            )
+            StatementKpiBox(
+                title = "إجمالي الدائن (-)",
+                amountMinor = totalCredit,
+                color = Color(0xFFC62828),
+                modifier = Modifier.weight(1f)
+            )
+            StatementKpiBox(
+                title = "الرصيد التراكمي النهائي",
+                amountMinor = closingBal,
+                color = Color(0xFF1565C0),
+                modifier = Modifier.weight(1f)
+            )
+        }
+
+        // Transactions Detailed Statement List
+        if (filteredTransactions.isEmpty()) {
+            Box(
+                modifier = Modifier
+                    .weight(1f)
+                    .fillMaxWidth(),
+                contentAlignment = Alignment.Center
+            ) {
+                Text("لا توجد حركات محاسبية مسجلة لهذا الحساب في الفترة المحددة")
+            }
+        } else {
+            LazyColumn(
+                modifier = Modifier.weight(1f),
+                verticalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                var running = openingBal
+                val sdf = SimpleDateFormat("yyyy/MM/dd HH:mm", Locale.ENGLISH)
+
+                items(filteredTransactions) { tx ->
+                    running += (tx.debit - tx.credit)
+                    val currentBal = running
+                    val dateFormatted = sdf.format(Date(tx.date))
+
+                    Card(
+                        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+                        shape = RoundedCornerShape(10.dp),
+                        elevation = CardDefaults.cardElevation(defaultElevation = 1.dp),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Column(modifier = Modifier.padding(12.dp)) {
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                                    Surface(
+                                        shape = RoundedCornerShape(4.dp),
+                                        color = MaterialTheme.colorScheme.secondaryContainer
+                                    ) {
+                                        Text(
+                                            text = tx.entryNumber,
+                                            modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
+                                            style = MaterialTheme.typography.labelSmall,
+                                            fontWeight = FontWeight.Bold
+                                        )
+                                    }
+                                    Text(
+                                        text = dateFormatted,
+                                        style = MaterialTheme.typography.labelSmall,
+                                        color = MaterialTheme.colorScheme.outline
+                                    )
+                                }
+
+                                Text(
+                                    text = "الرصيد: ${Money.fromMinor(currentBal).formatted}",
+                                    fontWeight = FontWeight.Bold,
+                                    color = if (currentBal >= 0) Color(0xFF1565C0) else Color(0xFFC62828),
+                                    style = MaterialTheme.typography.bodySmall
+                                )
+                            }
+
+                            Spacer(Modifier.height(6.dp))
+                            Text(text = tx.description, style = MaterialTheme.typography.bodyMedium)
+                            Spacer(Modifier.height(8.dp))
+
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween
+                            ) {
+                                if (tx.debit > 0) {
+                                    Text(
+                                        text = "مدين: ${Money.fromMinor(tx.debit).formatted}",
+                                        color = Color(0xFF2E7D32),
+                                        fontWeight = FontWeight.Bold,
+                                        style = MaterialTheme.typography.bodySmall
+                                    )
+                                } else {
+                                    Text(text = "مدين: -", color = MaterialTheme.colorScheme.outline, style = MaterialTheme.typography.bodySmall)
+                                }
+
+                                if (tx.credit > 0) {
+                                    Text(
+                                        text = "دائن: ${Money.fromMinor(tx.credit).formatted}",
+                                        color = Color(0xFFC62828),
+                                        fontWeight = FontWeight.Bold,
+                                        style = MaterialTheme.typography.bodySmall
+                                    )
+                                } else {
+                                    Text(text = "دائن: -", color = MaterialTheme.colorScheme.outline, style = MaterialTheme.typography.bodySmall)
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+fun StatementKpiBox(
+    title: String,
+    amountMinor: Long,
+    color: Color,
+    modifier: Modifier = Modifier
+) {
+    Surface(
+        shape = RoundedCornerShape(10.dp),
+        color = color.copy(alpha = 0.08f),
+        modifier = modifier
+    ) {
+        Column(modifier = Modifier.padding(10.dp)) {
+            Text(title, style = MaterialTheme.typography.labelSmall, color = color)
+            Spacer(Modifier.height(4.dp))
+            Text(
+                text = Money.fromMinor(amountMinor).formatted,
+                style = MaterialTheme.typography.titleSmall,
+                fontWeight = FontWeight.Bold,
+                color = color,
+                fontSize = 12.sp
+            )
+        }
+    }
+}
+
